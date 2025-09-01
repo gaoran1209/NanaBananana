@@ -65,8 +65,8 @@ function App() {
     setError(null);
   };
 
-  const handleGenerateImage = async (data: { prompt: string; image?: string }) => {
-    const { prompt, image } = data;
+  const handleGenerateImage = async (data: { prompt: string; images?: string[] }) => {
+    const { prompt, images } = data;
     if (!apiKey) {
       setError('Please set your Gemini API key.');
       setIsApiWindowOpen(true);
@@ -79,12 +79,14 @@ function App() {
       let usedPrompt = prompt;
       let apiPrompt = prompt;
 
-      if (image) {
+      if (images && images.length > 0) {
         if (!prompt) {
-          apiPrompt = 'Describe what is in this image in detail.';
-          usedPrompt = 'Image upload (describing image)';
+          apiPrompt = 'Describe what is in these images in detail.';
+          usedPrompt = `[${images.length} image${images.length > 1 ? 's' : ''}] (describing images)`;
+        } else {
+            usedPrompt = `[${images.length} image${images.length > 1 ? 's' : ''}] ${prompt}`;
         }
-        imageUrl = await generateFromImageAndTextFromApi(image, apiPrompt, apiKey);
+        imageUrl = await generateFromImageAndTextFromApi(images, apiPrompt, apiKey);
       } else {
         imageUrl = await generateImageFromApi(prompt, apiKey);
       }
@@ -127,7 +129,7 @@ function App() {
 
     try {
       setError(null);
-      const newImageUrl = await generateFromImageAndTextFromApi(imageToEdit.imageUrl, prompt, apiKey);
+      const newImageUrl = await generateFromImageAndTextFromApi([imageToEdit.imageUrl], prompt, apiKey);
       setHistory(prevHistory =>
         prevHistory.map(img =>
           img.id === imageId
@@ -162,7 +164,7 @@ function App() {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-3xl mx-auto">
           <p className="text-center text-gray-600 mb-6 text-sm md:text-base">
-            Describe an image, upload your own, or combine both. Your creations will appear below.
+            Describe an image, upload up to 4 images, or combine them. Your creations will appear below.
           </p>
           <PromptForm 
             onSubmit={handleGenerateImage} 

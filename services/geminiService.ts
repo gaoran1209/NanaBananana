@@ -44,25 +44,29 @@ export async function generateImage(prompt: string, apiKey: string): Promise<str
     }
 }
 
-export async function generateFromImageAndText(originalImageBase64: string, prompt: string, apiKey: string): Promise<string> {
+export async function generateFromImageAndText(originalImageBase64s: string[], prompt: string, apiKey: string): Promise<string> {
     if (!apiKey) {
         throw new Error("API key is missing.");
     }
     const ai = new GoogleGenAI({ apiKey });
 
-    const match = originalImageBase64.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-    if (!match) {
-        throw new Error('Invalid image data URL format.');
-    }
-    const mimeType = match[1];
-    const imageData = match[2];
+    const imageParts = originalImageBase64s.map(base64string => {
+        const match = base64string.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
+        if (!match) {
+            throw new Error('Invalid image data URL format.');
+        }
+        const mimeType = match[1];
+        const imageData = match[2];
+        return { inlineData: { data: imageData, mimeType: mimeType } };
+    });
+
 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image-preview',
             contents: {
                 parts: [
-                    { inlineData: { data: imageData, mimeType: mimeType } },
+                    ...imageParts,
                     { text: prompt },
                 ],
             },
