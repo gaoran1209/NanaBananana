@@ -1,41 +1,48 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Spinner } from './Spinner';
 import { MagicWandIcon } from './icons/MagicWandIcon';
 import { XIcon } from './icons/XIcon';
-import { AddPresetModal } from './AddPresetModal';
 import { type PromptPreset } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
+import { FourOutSwitch } from './FourOutSwitch';
 
 interface PromptFormProps {
-  onSubmit: (data: { prompt: string; images?: string[] }) => void;
-  isLoading: boolean;
+  onSubmit: (data: { prompt: string; images: string[]; isFourOut: boolean; }) => void;
   presets: PromptPreset[];
   onAddPreset: (preset: { name: string; prompt: string }) => void;
   onDeletePreset: (id: string) => void;
+  onTogglePresetModal: () => void;
+  initialData?: { prompt: string; images: string[] };
 }
 
-const BANDAI_PRESET_PROMPT = "create a 1/7 scale commercialized figure of the subject in the photo, in a realistic style and environment.Place the figure on a computer desk, using a circular transparent acrylic base without any text. On the computer screen, display the Z Brush modeling process of the figure.Next to the computer screen, place a BANDAI-style toy packaging box printed with the original artwork.The box has a transparent window through which you can see the objects inside. A hand enters the frame from the right side, about to pick up the figure.";
-
-const SWEATER_TRYON_PROMPT = `First, mentally conceptualize a material: Imagine a large, seamless, continuous piece of jacquard knit fabric. This fabric is already woven with the all-over Christmas pattern seen in the second image.
-
-**Now, using that virtual material, generate a professional 3D product shot**:
-1.  **Cutting and Sewing**: **Separate pieces** - a front panel and two sleeves - are cut from the single large piece of patterned fabric described above. These three separate pieces are then sewn together to construct the sweater. The overall silhouette and texture should reference the first image.
-2.  **Pattern at Seams**: Because the front panel and sleeves are cut and sewn as separate pieces, **the pattern must naturally break at the seams** where they are joined.
-3.  **Pattern and Texture at Edges**: At the neck opening, cuffs, and hem, **the fabric's knit structure simply tightens into a fine, vertical ribbed texture**. However, as these areas are extensions of the same fabric, **the pattern itself must be continuous** into these ribbed sections.
-4.  **Final Result Check**: The final image **must not contain any solid-color trims or bands**.
-5.  **Inner Collar Color**: The inner-facing side of the neck opening needs to be a clean, **solid off-white color**, with absolutely no pattern.
-6.  Solid white background.`;
-
+const FIGURE_GENERATION_PROMPT = "create a 1/7 scale commercialized figure of the subject in the photo, in a realistic style and environment.Place the figure on a computer desk, using a circular transparent acrylic base without any text. On the computer screen, display the Z Brush modeling process of the figure.Next to the computer screen, place a BANDAI-style toy packaging box printed with the original artwork.The box has a transparent window through which you can see the objects inside. A hand enters the frame from the right side, about to pick up the figure.";
+const HIGH_END_PORTRAIT_PROMPT = "将图片转换为摄影棚风格的顶级半身肖像照。人物穿着都市休闲服饰，动作自然放松，镜头特写聚焦面部。背景为柔和的渐变色，层次分明，突出主体与背景的分离。画面氛围静谧而温柔，细腻胶片颗粒质感，柔和定向光轻抚面庞，在眼神处留下光点，营造经典黑白摄影的高级氛围。整体保留大量负空间，简洁呼吸，非中心构图。";
+const PATTERN_EXTRACTION_PROMPT = "Extract patterns from clothing. Requirements for extraction are as follows: 1) The original shape and color of the pattern must be restored as much as possible, making it suitable for printing; 2) The pattern must be seamless/tileable; 3) Deformation caused by stretching and wrinkling must be corrected; 4) The fabric texture on the clothing must be removed, leaving only the pattern itself; 5) The pattern must fill the entire image, without any borders.";
+const COUPLE_PHOTOSHOOT_PROMPT = "Merge the two models in the image to create a couple fashion portrait. Preserve the print, the models' poses, facial details and the style of their clothing. Every detail is meticulously crafted.";
+const TEXT_REPLACEMENT_PROMPT = "Change the text \"【待替换原始文字内容】\" in the image to \"【所需文字内容】\". Leave the rest of the image unchanged. The modified text will match the overall style of the image.";
+const PATTERN_BLENDING_PROMPT = "Remove the black or white background from the printed pattern and naturally blend it into the chest area (the entire chest)/ the left chest area (heart position)/ the back area of the garment. At the same time, keep other parts of the clothing unchanged.";
+const OOTD_PROMPT = "Generate a flat lay OOTD outfit image from a top-down perspective based on the uploaded reference photo, ensuring the clothing, accessories, and shoes are replicated 1:1 from the reference.";
 const MAX_IMAGES = 4;
 
-export const PromptForm: React.FC<PromptFormProps> = ({ onSubmit, isLoading, presets, onAddPreset, onDeletePreset }) => {
-  const [prompt, setPrompt] = useState('');
-  const [imageBases64, setImageBases64] = useState<string[]>([]);
+export const PromptForm: React.FC<PromptFormProps> = ({ onSubmit, presets, onAddPreset, onDeletePreset, onTogglePresetModal, initialData }) => {
+  const [prompt, setPrompt] = useState(initialData?.prompt || '');
+  const [imageBases64, setImageBases64] = useState<string[]>(initialData?.images || []);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isPresetModalOpen, setIsPresetModalOpen] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isFourOut, setIsFourOut] = useState(false);
+
+  const adjustTextareaHeight = (element: HTMLTextAreaElement | null) => {
+    if (element) {
+      element.style.height = 'auto';
+      element.style.height = `${element.scrollHeight}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight(textareaRef.current);
+  }, [prompt]);
 
   const processFiles = (files: FileList | null | undefined) => {
     if (!files || files.length === 0) return;
@@ -83,19 +90,6 @@ export const PromptForm: React.FC<PromptFormProps> = ({ onSubmit, isLoading, pre
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     processFiles(e.target.files);
   };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    processFiles(e.dataTransfer.files);
-  };
-
-  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>, isEntering: boolean) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(isEntering);
-  };
   
   const handleRemoveImage = (indexToRemove: number) => {
     setImageBases64(prev => prev.filter((_, index) => index !== indexToRemove));
@@ -104,163 +98,179 @@ export const PromptForm: React.FC<PromptFormProps> = ({ onSubmit, isLoading, pre
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if ((prompt.trim() || imageBases64.length > 0) && !isLoading && !isUploading) {
-      onSubmit({ prompt: prompt.trim(), images: imageBases64 });
+    if ((prompt.trim() || imageBases64.length > 0) && !isUploading) {
+      onSubmit({ prompt: prompt.trim(), images: imageBases64, isFourOut });
       setPrompt('');
       setImageBases64([]);
     }
   };
   
-  const canSubmit = !isLoading && !isUploading && (!!prompt.trim() || imageBases64.length > 0);
-  const showUploader = imageBases64.length < MAX_IMAGES;
+  const canSubmit = !isUploading && (!!prompt.trim() || imageBases64.length > 0);
 
   return (
-    <div className="relative z-10">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row flex-wrap items-start gap-3 p-3 bg-white/30 backdrop-blur-xl rounded-2xl shadow-lg border border-white/50">
-          
-          <div className="flex-shrink-0 flex flex-wrap items-center gap-2">
-            {imageBases64.map((imgSrc, index) => (
-               <div key={index} className="relative w-16 h-16">
-                  <img src={imgSrc} alt={`Upload preview ${index + 1}`} className="w-full h-full rounded-lg object-cover"/>
-                  <button
-                      type="button"
-                      onClick={() => handleRemoveImage(index)}
-                      className="absolute -top-1.5 -right-1.5 bg-white/80 rounded-full p-0.5 text-gray-700 border border-gray-300 hover:bg-white transition-colors"
-                      aria-label="Remove image"
-                      disabled={isLoading}
-                  >
-                      <XIcon className="w-4 h-4" />
-                  </button>
-              </div>
-            ))}
-            
-            {isUploading && (
-              <div className="w-16 h-16 flex items-center justify-center bg-gray-200/50 rounded-lg">
-                <Spinner isDark />
-              </div>
-            )}
-
-            {showUploader && (
-              <div
-                onClick={() => !isUploading && fileInputRef.current?.click()}
-                onDrop={handleDrop}
-                onDragOver={(e) => handleDragEvents(e, true)}
-                onDragEnter={(e) => handleDragEvents(e, true)}
-                onDragLeave={(e) => handleDragEvents(e, false)}
-                className={`group relative flex flex-col items-center justify-center w-16 h-16 rounded-lg border-2 border-dashed transition-colors duration-200 
-                  ${isUploading ? 'cursor-not-allowed bg-gray-100/50' : 'cursor-pointer'}
-                  ${isDragging ? 'border-blue-500 bg-blue-50/80' : 'border-gray-400/80 hover:border-blue-400/80 hover:bg-white/30'}`
-                }
-                aria-label={`Add up to ${MAX_IMAGES - imageBases64.length} more images`}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  className="hidden"
-                  accept="image/png, image/jpeg, image/webp"
-                  multiple
-                  disabled={isUploading}
-                />
-                <div className="flex flex-col items-center justify-center text-center pointer-events-none text-gray-500 group-hover:text-blue-500 transition-colors">
-                  <PlusIcon />
+    <div className="max-w-7xl mx-auto">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-zinc-600 mb-2">Reference</h3>
+          <div className="flex flex-wrap items-center gap-2">
+              {imageBases64.map((imgSrc, index) => (
+                 <div key={index} className="relative w-16 h-16">
+                    <img src={imgSrc} alt={`Upload preview ${index + 1}`} className="w-full h-full rounded-lg object-cover border border-fuchsia-200/50"/>
+                    <button
+                        type="button"
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute -top-1.5 -right-1.5 bg-white rounded-full p-0.5 text-zinc-600 border border-fuchsia-200/80 hover:bg-fuchsia-50 transition-colors"
+                        aria-label="Remove image"
+                        disabled={isUploading}
+                    >
+                        <XIcon className="w-4 h-4" />
+                    </button>
                 </div>
-              </div>
-            )}
+              ))}
+              {imageBases64.length < MAX_IMAGES && (
+                   <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading || imageBases64.length >= MAX_IMAGES}
+                      className="w-16 h-16 border-2 border-dashed border-fuchsia-300 rounded-lg flex items-center justify-center text-zinc-500 hover:border-purple-400 hover:text-purple-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label="Attach images"
+                  >
+                      {isUploading ? <Spinner/> : <PlusIcon />}
+                  </button>
+              )}
           </div>
-          
-          <div className="flex-grow w-full sm:w-auto flex flex-col sm:flex-row gap-3">
-              <label htmlFor="prompt-input" className="sr-only">Image Prompt</label>
-              <input
+           <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            accept="image/png, image/jpeg, image/webp"
+            multiple
+            disabled={isUploading || imageBases64.length >= MAX_IMAGES}
+          />
+          {uploadError && (
+              <div className="mt-2 text-red-600 text-sm" role="alert">
+                <p>{uploadError}</p>
+              </div>
+          )}
+        </div>
+
+        <div>
+            <label htmlFor="prompt-input" className="sr-only">Image Prompt</label>
+            <textarea
                 id="prompt-input"
-                type="text"
+                ref={textareaRef}
+                rows={6}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={imageBases64.length > 0 ? "Describe how to edit or combine images..." : "A futuristic cityscape..."}
-                className="flex-grow bg-white/30 backdrop-blur-sm text-gray-800 placeholder-gray-600 focus:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-pink-400 px-4 py-3 rounded-lg border border-white/40 h-16 sm:h-auto"
-                disabled={isLoading || isUploading}
-              />
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="flex-shrink-0 flex items-center justify-center w-full sm:w-auto h-16 sm:h-auto px-6 bg-gradient-to-r from-blue-400 to-pink-400 text-white font-semibold rounded-lg hover:from-blue-500 hover:to-pink-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-pink-500 transition-all duration-300 transform hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none"
-                aria-label="Generate image"
-              >
-                {isLoading ? (
-                  <>
-                    <Spinner />
-                    <span className="ml-2">Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <MagicWandIcon />
-                    <span className="ml-2">Generate</span>
-                  </>
-                )}
-              </button>
-          </div>
+                onInput={(e) => adjustTextareaHeight(e.currentTarget)}
+                placeholder="Please enter a command"
+                className="w-full bg-white border border-fuchsia-200 text-zinc-800 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 p-3 rounded-lg text-sm resize-none overflow-y-auto max-h-96"
+                disabled={isUploading}
+            />
         </div>
-      </form>
-      {uploadError && (
-        <div className="mt-2 text-center text-red-700 text-sm bg-red-100/80 backdrop-blur-sm p-2 rounded-md" role="alert">
-          <p>{uploadError}</p>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-2 mt-4">
-        <button
-          type="button"
-          onClick={() => setPrompt(BANDAI_PRESET_PROMPT)}
-          className="border border-pink-300/80 text-pink-600 bg-pink-50/80 hover:bg-pink-100/80 transition-colors px-4 py-2 rounded-full text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isLoading || isUploading}
-        >
-          ✨ Try BanDai Preset
-        </button>
-        <button
-          type="button"
-          onClick={() => setPrompt(SWEATER_TRYON_PROMPT)}
-          className="border border-pink-300/80 text-pink-600 bg-pink-50/80 hover:bg-pink-100/80 transition-colors px-4 py-2 rounded-full text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isLoading || isUploading}
-        >
-          👕 Sweater Tryon
-        </button>
-        {presets.map(preset => (
-            <div key={preset.id} className="relative group">
+            
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+            <div className="flex flex-wrap items-center gap-2 self-start">
                 <button
                     type="button"
-                    onClick={() => setPrompt(preset.prompt)}
-                    className="border border-pink-300/80 text-pink-600 bg-pink-50/80 hover:bg-pink-100/80 transition-colors pl-4 pr-3 py-2 rounded-full text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={isLoading || isUploading}
+                    onClick={() => setPrompt(FIGURE_GENERATION_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
                 >
-                    {preset.name}
+                    手办生成
                 </button>
                 <button
-                    onClick={() => onDeletePreset(preset.id)}
-                    className="absolute -top-1 -right-1 bg-white rounded-full p-0.5 text-gray-500 border border-gray-300 hover:bg-red-100 hover:text-red-600 transition-all opacity-0 group-hover:opacity-100 disabled:opacity-0"
-                    aria-label={`Delete ${preset.name} preset`}
-                    disabled={isLoading || isUploading}
+                    type="button"
+                    onClick={() => setPrompt(HIGH_END_PORTRAIT_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
                 >
-                    <XIcon className="w-3 h-3" />
+                    高级肖像图
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPrompt(PATTERN_EXTRACTION_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
+                >
+                    花型&图案提取
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPrompt(COUPLE_PHOTOSHOOT_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
+                >
+                    双人合拍
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPrompt(TEXT_REPLACEMENT_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
+                >
+                    印花换字
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPrompt(PATTERN_BLENDING_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
+                >
+                    印花融合
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setPrompt(OOTD_PROMPT)}
+                    className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={isUploading}
+                >
+                    OOTD
+                </button>
+                 {presets.map(p => (
+                    <div key={p.id} className="relative group">
+                        <button
+                            type="button"
+                            onClick={() => setPrompt(p.prompt)}
+                            className="border border-fuchsia-300 text-purple-700 bg-white hover:bg-fuchsia-50 transition-colors pl-3 pr-6 py-1.5 rounded-md text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={isUploading}
+                        >
+                            {p.name}
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => onDeletePreset(p.id)}
+                            className="absolute top-1/2 -translate-y-1/2 right-1 text-zinc-400 hover:text-red-500 transition-opacity p-0.5 rounded-full opacity-0 group-hover:opacity-100"
+                            aria-label={`Delete preset ${p.name}`}
+                        >
+                            <XIcon className="w-3 h-3"/>
+                        </button>
+                    </div>
+                ))}
+                <button
+                    type="button"
+                    onClick={onTogglePresetModal}
+                    className="flex items-center gap-1 border border-dashed border-fuchsia-400/80 text-purple-700 bg-transparent hover:bg-fuchsia-50 transition-colors px-3 py-1.5 rounded-md text-xs font-medium"
+                    aria-label="Add new prompt preset"
+                >
+                    <PlusIcon /> Add
                 </button>
             </div>
-        ))}
-        <button
-            type="button"
-            onClick={() => setIsPresetModalOpen(true)}
-            className="flex items-center justify-center w-8 h-8 border-2 border-dashed border-gray-400/80 text-gray-500 bg-gray-50/50 hover:bg-gray-100/80 hover:border-gray-500 hover:text-gray-600 transition-colors rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || isUploading}
-            aria-label="Add new prompt preset"
-        >
-            <PlusIcon />
-        </button>
-      </div>
-
-      {isPresetModalOpen && (
-        <AddPresetModal
-            onClose={() => setIsPresetModalOpen(false)}
-            onSave={onAddPreset}
-        />
-      )}
+            <div className="flex items-center gap-2 self-end sm:self-center w-full sm:w-auto justify-end">
+                <FourOutSwitch isFourOut={isFourOut} setIsFourOut={setIsFourOut} disabled={isUploading} />
+                <button
+                    type="submit"
+                    disabled={!canSubmit}
+                    className="flex items-center justify-center h-10 px-6 bg-gradient-to-r from-purple-500 to-fuchsia-500 text-white font-semibold rounded-md hover:from-purple-600 hover:to-fuchsia-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-fuchsia-50 focus:ring-purple-500 transition-all text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    aria-label="Generate image"
+                >
+                    <MagicWandIcon />
+                    <span className="ml-2">Generate</span>
+                </button>
+            </div>
+        </div>
+      </form>
     </div>
   );
 };
